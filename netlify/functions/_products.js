@@ -10,17 +10,47 @@ export function json(statusCode, body) {
   }
 }
 
+function normalizeFeatures(features) {
+  if (Array.isArray(features)) return features
+
+  if (typeof features === 'string') {
+    try {
+      const parsed = JSON.parse(features)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
+
+  return []
+}
+
+function normalizePrice(price) {
+  const numericPrice = Number(price || 0)
+
+  if (!Number.isFinite(numericPrice)) {
+    return 0
+  }
+
+  return numericPrice
+}
+
 function normalizeProduct(product) {
+  const price = normalizePrice(product.price)
+  const currency = product.currency || 'EUR'
+
   return {
     id: product.id,
-    slug: product.slug,
-    name: product.name,
-    price: Number(product.price || 0),
+    slug: product.slug || product.id,
+    name: product.name || 'Produit',
+    price,
+    priceString: price.toFixed(2),
+    currency,
     stock: Number(product.stock || 0),
     category: product.category || 'Service',
     icon: product.icon || '⚡',
     description: product.description || '',
-    features: Array.isArray(product.features) ? product.features : [],
+    features: normalizeFeatures(product.features),
     delivery_title: product.delivery_title || '',
     delivery_message: product.delivery_message || '',
     image_url: product.image_url || '',
@@ -48,20 +78,37 @@ export async function getProduct(productIdOrSlug) {
   if (!productIdOrSlug) return null
 
   const supabase = getSupabase()
+  const cleanValue = decodeURIComponent(String(productIdOrSlug))
 
-  const { data, error } = await supabase
+  const byId = await supabase
     .from('products')
     .select('*')
-    .or(`id.eq.${productIdOrSlug},slug.eq.${productIdOrSlug}`)
+    .eq('id', cleanValue)
     .maybeSingle()
 
-  if (error) {
-    throw new Error(error.message)
+  if (byId.error) {
+    throw new Error(byId.error.message)
   }
 
-  if (!data) return null
+  if (byId.data) {
+    return normalizeProduct(byId.data)
+  }
 
-  return normalizeProduct(data)
+  const bySlug = await supabase
+    .from('products')
+    .select('*')
+    .eq('slug', cleanValue)
+    .maybeSingle()
+
+  if (bySlug.error) {
+    throw new Error(bySlug.error.message)
+  }
+
+  if (bySlug.data) {
+    return normalizeProduct(bySlug.data)
+  }
+
+  return null
 }
 
 export function isInStock(product) {

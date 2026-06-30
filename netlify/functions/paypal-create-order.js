@@ -9,6 +9,10 @@ function isValidEmail(email = '') {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
 
+function cleanPaypalText(value, maxLength = 127) {
+  return String(value || 'Produit ToolsOp V2').slice(0, maxLength)
+}
+
 export async function handler(event) {
   if (event.httpMethod === 'OPTIONS') return json(200, { ok: true })
 
@@ -54,7 +58,19 @@ export async function handler(event) {
       })
     }
 
+    const price = Number(product.price || 0)
+
+    if (!Number.isFinite(price) || price <= 0) {
+      return json(400, {
+        ok: false,
+        error: 'Prix produit invalide côté serveur.',
+      })
+    }
+
+    const currency = product.currency || 'EUR'
+    const priceString = price.toFixed(2)
     const siteUrl = getSiteUrl(event)
+    const productName = cleanPaypalText(product.name)
 
     const paypalOrder = await paypalRequest('/v2/checkout/orders', {
       method: 'POST',
@@ -65,27 +81,27 @@ export async function handler(event) {
           {
             reference_id: product.id,
             custom_id: product.id,
-            description: product.name,
+            description: productName,
 
             amount: {
-              currency_code: product.currency,
-              value: product.priceString,
+              currency_code: currency,
+              value: priceString,
               breakdown: {
                 item_total: {
-                  currency_code: product.currency,
-                  value: product.priceString,
+                  currency_code: currency,
+                  value: priceString,
                 },
               },
             },
 
             items: [
               {
-                name: product.name,
+                name: productName,
                 quantity: '1',
                 category: 'DIGITAL_GOODS',
                 unit_amount: {
-                  currency_code: product.currency,
-                  value: product.priceString,
+                  currency_code: currency,
+                  value: priceString,
                 },
               },
             ],
