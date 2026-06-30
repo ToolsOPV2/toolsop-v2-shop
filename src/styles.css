@@ -2081,3 +2081,107 @@ code {
     width: 100%;
   }
 }
+.manual-orders-list {
+  display: grid;
+  gap: 16px;
+}
+
+.manual-order-card {
+  position: relative;
+  padding: 18px;
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, rgba(255, 207, 90, 0.07), transparent),
+    rgba(0, 0, 0, 0.24);
+  border: 1px solid rgba(255, 207, 90, 0.18);
+}
+
+.history-card {
+  background:
+    linear-gradient(135deg, rgba(229, 9, 20, 0.06), transparent),
+    rgba(0, 0, 0, 0.2);
+  border-color: rgba(255, 255, 255, 0.09);
+}
+
+.manual-order-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.manual-order-header strong {
+  color: #fff;
+  font-size: 1.2rem;
+}
+
+.manual-order-info {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.manual-order-info div {
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.manual-order-info span {
+  display: block;
+  margin-bottom: 6px;
+  color: rgba(255, 255, 255, 0.52);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.manual-order-info strong {
+  display: block;
+  color: #fff;
+  word-break: break-word;
+}
+
+.order-status-pill {
+  display: inline-flex;
+  width: fit-content;
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.status-pending {
+  color: #ffcf5a;
+  background: rgba(255, 207, 90, 0.12);
+  border: 1px solid rgba(255, 207, 90, 0.28);
+}
+
+.status-completed {
+  color: #45f59b;
+  background: rgba(69, 245, 155, 0.1);
+  border: 1px solid rgba(69, 245, 155, 0.25);
+}
+
+.status-neutral {
+  color: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+@media (max-width: 760px) {
+  .manual-order-info {
+    grid-template-columns: 1fr;
+  }
+
+  .manual-order-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

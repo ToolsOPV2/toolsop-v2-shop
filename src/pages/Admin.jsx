@@ -24,9 +24,11 @@ function getStatusLabel(status) {
 
 function getStatusClass(status) {
   if (status === 'PENDING_MANUAL') return 'status-pending'
+
   if (status === 'COMPLETED_MANUAL' || status === 'PAID' || status === 'COMPLETED') {
     return 'status-completed'
   }
+
   return 'status-neutral'
 }
 
@@ -121,19 +123,23 @@ export default function Admin() {
     }
   }, [isAdmin])
 
+  const pendingOrders = useMemo(() => {
+    return orders.filter((order) => order.status === 'PENDING_MANUAL')
+  }, [orders])
+
   const stats = useMemo(() => {
     const totalRevenue = orders.reduce((sum, order) => {
       if (order.status === 'PENDING_MANUAL') return sum
       return sum + Number(order.amount || 0)
     }, 0)
 
-    const pendingOrders = orders.filter((order) => order.status === 'PENDING_MANUAL').length
+    const pendingOrdersCount = orders.filter((order) => order.status === 'PENDING_MANUAL').length
     const completedOrders = orders.filter((order) => order.status !== 'PENDING_MANUAL').length
     const totalStock = products.reduce((sum, product) => sum + Number(product.stock || 0), 0)
 
     return {
       totalRevenue,
-      pendingOrders,
+      pendingOrdersCount,
       completedOrders,
       totalStock,
     }
@@ -222,7 +228,10 @@ export default function Admin() {
 
   async function completeManualOrder(order) {
     const confirmed = window.confirm(
-      `Marquer la commande "${order.product_name}" comme effectuée et envoyer l’email à ${order.customer_email} ?`
+      `Confirmer cette commande ?\n\nArticle : ${order.product_name}\nEmail : ${order.customer_email}\nMontant : ${formatPrice(
+        order.amount,
+        order.currency || 'EUR'
+      )}\n\nCela va envoyer l’email automatiquement.`
     )
 
     if (!confirmed) return
@@ -325,7 +334,7 @@ export default function Admin() {
             <h1>Panel admin</h1>
 
             <p>
-              Gère le stock, l’historique, les commandes en attente et l’envoi automatique des emails.
+              Vérifie les commandes PayPal.Me avec le nom de l’article, l’email client et le montant.
             </p>
           </div>
 
@@ -346,7 +355,7 @@ export default function Admin() {
 
           <div className="glass-card stat-card">
             <span>En attente</span>
-            <strong>{stats.pendingOrders}</strong>
+            <strong>{stats.pendingOrdersCount}</strong>
           </div>
 
           <div className="glass-card stat-card">
@@ -362,72 +371,106 @@ export default function Admin() {
 
         <div className="admin-panels">
           <div className="glass-card admin-panel full-admin-panel">
-            <h2>Commandes en attente</h2>
+            <h2>Commandes en attente à vérifier</h2>
 
-            <div className="admin-table order-history-table">
-              {orders.filter((order) => order.status === 'PENDING_MANUAL').length === 0 && (
+            <div className="manual-orders-list">
+              {pendingOrders.length === 0 && (
                 <p className="empty-state">Aucune commande en attente.</p>
               )}
 
-              {orders
-                .filter((order) => order.status === 'PENDING_MANUAL')
-                .map((order) => (
-                  <div className="admin-row order-row manual-order-row" key={order.id || order.paypal_order_id}>
+              {pendingOrders.map((order) => (
+                <div className="manual-order-card" key={order.id || order.paypal_order_id}>
+                  <div className="manual-order-header">
                     <span className={`order-status-pill ${getStatusClass(order.status)}`}>
                       {getStatusLabel(order.status)}
                     </span>
 
+                    <strong>{formatPrice(order.amount, order.currency || 'EUR')}</strong>
+                  </div>
+
+                  <div className="manual-order-info">
                     <div>
-                      <b>{order.product_name}</b>
-                      <em>{order.customer_email}</em>
-                      <small>{order.paypal_order_id}</small>
+                      <span>Article</span>
+                      <strong>{order.product_name || 'Article inconnu'}</strong>
                     </div>
 
-                    <strong>{formatPrice(order.amount, order.currency || 'EUR')}</strong>
+                    <div>
+                      <span>Email client</span>
+                      <strong>{order.customer_email || 'Email inconnu'}</strong>
+                    </div>
 
-                    <button
-                      className="btn btn-primary btn-small"
-                      type="button"
-                      disabled={completingOrder === order.id}
-                      onClick={() => completeManualOrder(order)}
-                    >
-                      {completingOrder === order.id ? 'Envoi...' : 'Marquer effectué'}
-                    </button>
+                    <div>
+                      <span>Date</span>
+                      <strong>{formatDate(order.saved_at || order.paid_at)}</strong>
+                    </div>
 
-                    <small>{formatDate(order.saved_at || order.paid_at)}</small>
+                    <div>
+                      <span>ID commande</span>
+                      <strong>{order.paypal_order_id || order.id}</strong>
+                    </div>
                   </div>
-                ))}
+
+                  <button
+                    className="btn btn-primary full"
+                    type="button"
+                    disabled={completingOrder === order.id}
+                    onClick={() => completeManualOrder(order)}
+                  >
+                    {completingOrder === order.id ? 'Validation + envoi email...' : 'Marquer effectué + envoyer email'}
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
 
           <div className="glass-card admin-panel full-admin-panel">
             <h2>Historique complet</h2>
 
-            <div className="admin-table order-history-table">
+            <div className="manual-orders-list">
               {orders.length === 0 && <p className="empty-state">Aucune commande enregistrée.</p>}
 
               {orders.map((order) => (
-                <div className="admin-row order-row" key={order.id || order.paypal_order_id}>
-                  <span className={`order-status-pill ${getStatusClass(order.status)}`}>
-                    {getStatusLabel(order.status)}
-                  </span>
+                <div className="manual-order-card history-card" key={order.id || order.paypal_order_id}>
+                  <div className="manual-order-header">
+                    <span className={`order-status-pill ${getStatusClass(order.status)}`}>
+                      {getStatusLabel(order.status)}
+                    </span>
 
-                  <div>
-                    <b>{order.product_name}</b>
-                    <em>{order.customer_email}</em>
-                    <small>{order.paypal_order_id}</small>
-                    {order.email_sent ? (
-                      <small>Email envoyé ✅</small>
-                    ) : order.email_error ? (
-                      <small>Email : {order.email_error}</small>
-                    ) : (
-                      <small>Email non envoyé</small>
-                    )}
+                    <strong>{formatPrice(order.amount, order.currency || 'EUR')}</strong>
                   </div>
 
-                  <strong>{formatPrice(order.amount, order.currency || 'EUR')}</strong>
+                  <div className="manual-order-info">
+                    <div>
+                      <span>Article</span>
+                      <strong>{order.product_name || 'Article inconnu'}</strong>
+                    </div>
 
-                  <em>{formatDate(order.saved_at || order.paid_at)}</em>
+                    <div>
+                      <span>Email client</span>
+                      <strong>{order.customer_email || 'Email inconnu'}</strong>
+                    </div>
+
+                    <div>
+                      <span>Date</span>
+                      <strong>{formatDate(order.saved_at || order.paid_at)}</strong>
+                    </div>
+
+                    <div>
+                      <span>Email automatique</span>
+                      <strong>
+                        {order.email_sent
+                          ? 'Envoyé ✅'
+                          : order.email_error
+                            ? `Non envoyé : ${order.email_error}`
+                            : 'Non envoyé'}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span>ID commande</span>
+                      <strong>{order.paypal_order_id || order.id}</strong>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
