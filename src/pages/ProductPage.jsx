@@ -218,7 +218,7 @@ export default function ProductPage() {
           </form>
 
           <small className="secure-note">
-            <span>Payer en friends and familys seulement !</span>
+            <span className="eyebrow">Paiement en friends and family seulement !</span>
           </small>
         </div>
       </div>
