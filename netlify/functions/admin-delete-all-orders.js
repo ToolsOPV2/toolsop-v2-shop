@@ -20,43 +20,31 @@ export async function handler(event) {
     }
 
     const body = JSON.parse(event.body || '{}')
-    const orderId = String(body.orderId || '').trim()
-    const paypalOrderId = String(body.paypalOrderId || '').trim()
+    const confirmation = String(body.confirmation || '').trim()
 
-    if (!orderId && !paypalOrderId) {
+    if (confirmation !== 'SUPPRIMER') {
       return json(400, {
         ok: false,
-        error: 'orderId ou paypalOrderId manquant',
+        error: 'Confirmation invalide',
       })
     }
 
     const supabase = getSupabase()
 
-    let query = supabase.from('orders').delete().select('*')
-
-    if (orderId) {
-      query = query.eq('id', orderId)
-    } else {
-      query = query.eq('paypal_order_id', paypalOrderId)
-    }
-
-    const { data, error } = await query
+    const { data, error } = await supabase
+      .from('orders')
+      .delete()
+      .not('id', 'is', null)
+      .select('*')
 
     if (error) {
       throw new Error(error.message)
     }
 
-    if (!data || data.length === 0) {
-      return json(404, {
-        ok: false,
-        error: 'Commande introuvable',
-      })
-    }
-
     return json(200, {
       ok: true,
-      deleted: data[0],
-      message: 'Commande supprimée.',
+      deletedCount: data?.length || 0,
+      message: `${data?.length || 0} commande(s) supprimée(s).`,
     })
   } catch (error) {
     return json(500, {

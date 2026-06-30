@@ -48,6 +48,7 @@ export default function Admin() {
   const [savingStock, setSavingStock] = useState('')
   const [completingOrder, setCompletingOrder] = useState('')
   const [deletingOrder, setDeletingOrder] = useState('')
+  const [deletingAllOrders, setDeletingAllOrders] = useState(false)
 
   async function checkAdmin() {
     try {
@@ -228,47 +229,6 @@ export default function Admin() {
   }
 
   async function completeManualOrder(order) {
-    async function deleteOrder(order) {
-  const confirmed = window.confirm(
-    `Supprimer cette commande ?\n\nArticle : ${order.product_name}\nEmail : ${order.customer_email}\nMontant : ${formatPrice(
-      order.amount,
-      order.currency || 'EUR'
-    )}\n\nCette action supprimera la commande de l’historique.`
-  )
-
-  if (!confirmed) return
-
-  try {
-    setDeletingOrder(order.id)
-    setError('')
-    setSuccess('')
-
-    const response = await fetch('/.netlify/functions/admin-delete-order', {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        orderId: order.id,
-        paypalOrderId: order.paypal_order_id,
-      }),
-    })
-
-    const data = await response.json()
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Impossible de supprimer la commande')
-    }
-
-    setSuccess(`Commande supprimée : ${order.product_name}`)
-    await loadData()
-  } catch (error) {
-    setError(error.message)
-  } finally {
-    setDeletingOrder('')
-  }
-}
     const confirmed = window.confirm(
       `Confirmer cette commande ?\n\nArticle : ${order.product_name}\nEmail : ${order.customer_email}\nMontant : ${formatPrice(
         order.amount,
@@ -307,6 +267,89 @@ export default function Admin() {
       await loadData()
     } finally {
       setCompletingOrder('')
+    }
+  }
+
+  async function deleteOrder(order) {
+    const confirmed = window.confirm(
+      `Supprimer cette commande ?\n\nArticle : ${order.product_name}\nEmail : ${order.customer_email}\nMontant : ${formatPrice(
+        order.amount,
+        order.currency || 'EUR'
+      )}\n\nCette action ne peut pas être annulée.`
+    )
+
+    if (!confirmed) return
+
+    try {
+      setDeletingOrder(order.id || order.paypal_order_id)
+      setError('')
+      setSuccess('')
+
+      const response = await fetch('/.netlify/functions/admin-delete-order', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderId: order.id,
+          paypalOrderId: order.paypal_order_id,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Impossible de supprimer la commande')
+      }
+
+      setSuccess(`Commande supprimée : ${order.product_name || 'commande'}`)
+      await loadData()
+    } catch (error) {
+      setError(error.message)
+    } finally {
+      setDeletingOrder('')
+    }
+  }
+
+  async function deleteAllOrders() {
+    const confirmation = window.prompt(
+      'Tu es sûr de vouloir supprimer TOUTES les commandes ?\n\nÉcris SUPPRIMER pour confirmer.'
+    )
+
+    if (confirmation !== 'SUPPRIMER') {
+      setError('Suppression annulée : confirmation incorrecte.')
+      return
+    }
+
+    try {
+      setDeletingAllOrders(true)
+      setError('')
+      setSuccess('')
+
+      const response = await fetch('/.netlify/functions/admin-delete-all-orders', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          confirmation: 'SUPPRIMER',
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Impossible de supprimer toutes les commandes')
+      }
+
+      setSuccess(`${data.deletedCount || 0} commande(s) supprimée(s).`)
+      await loadData()
+    } catch (error) {
+      setError(error.message)
+    } finally {
+      setDeletingAllOrders(false)
     }
   }
 
@@ -411,6 +454,21 @@ export default function Admin() {
           </div>
         </div>
 
+        <div className="admin-actions-bar">
+          <button
+            className="btn btn-ghost danger-btn"
+            type="button"
+            disabled={orders.length === 0 || deletingAllOrders}
+            onClick={deleteAllOrders}
+          >
+            {deletingAllOrders ? 'Suppression...' : 'Tout supprimer'}
+          </button>
+
+          <button className="btn btn-ghost" type="button" onClick={loadData}>
+            Rafraîchir
+          </button>
+        </div>
+
         <div className="admin-panels">
           <div className="glass-card admin-panel full-admin-panel">
             <h2>Commandes en attente à vérifier</h2>
@@ -443,7 +501,7 @@ export default function Admin() {
 
                     <div>
                       <span>Date</span>
-                      <strong>{formatDate(order.saved_at || order.paid_at)}</strong>
+                      <strong>{formatDate(order.saved_at || order.paid_at || order.created_at)}</strong>
                     </div>
 
                     <div>
@@ -452,25 +510,27 @@ export default function Admin() {
                     </div>
                   </div>
 
-                 <div className="manual-order-actions">
-  <button
-    className="btn btn-primary full"
-    type="button"
-    disabled={completingOrder === order.id || deletingOrder === order.id}
-    onClick={() => completeManualOrder(order)}
-  >
-    {completingOrder === order.id ? 'Validation + envoi email...' : 'Marquer effectué + envoyer email'}
-  </button>
+                  <div className="manual-order-actions">
+                    <button
+                      className="btn btn-primary full"
+                      type="button"
+                      disabled={completingOrder === order.id || deletingOrder === order.id}
+                      onClick={() => completeManualOrder(order)}
+                    >
+                      {completingOrder === order.id
+                        ? 'Validation + envoi email...'
+                        : 'Marquer effectué + envoyer email'}
+                    </button>
 
-  <button
-    className="btn btn-ghost danger-btn full"
-    type="button"
-    disabled={deletingOrder === order.id || completingOrder === order.id}
-    onClick={() => deleteOrder(order)}
-  >
-    {deletingOrder === order.id ? 'Suppression...' : 'Supprimer la commande'}
-  </button>
-</div>
+                    <button
+                      className="btn btn-ghost danger-btn full"
+                      type="button"
+                      disabled={deletingOrder === order.id || completingOrder === order.id}
+                      onClick={() => deleteOrder(order)}
+                    >
+                      {deletingOrder === order.id ? 'Suppression...' : 'Supprimer'}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -490,14 +550,6 @@ export default function Admin() {
                     </span>
 
                     <strong>{formatPrice(order.amount, order.currency || 'EUR')}</strong>
-                    <button
-  className="btn btn-ghost danger-btn full"
-  type="button"
-  disabled={deletingOrder === order.id}
-  onClick={() => deleteOrder(order)}
->
-  {deletingOrder === order.id ? 'Suppression...' : 'Supprimer cette commande'}
-</button>
                   </div>
 
                   <div className="manual-order-info">
@@ -513,7 +565,7 @@ export default function Admin() {
 
                     <div>
                       <span>Date</span>
-                      <strong>{formatDate(order.saved_at || order.paid_at)}</strong>
+                      <strong>{formatDate(order.saved_at || order.paid_at || order.created_at)}</strong>
                     </div>
 
                     <div>
@@ -532,6 +584,15 @@ export default function Admin() {
                       <strong>{order.paypal_order_id || order.id}</strong>
                     </div>
                   </div>
+
+                  <button
+                    className="btn btn-ghost danger-btn full"
+                    type="button"
+                    disabled={deletingOrder === order.id}
+                    onClick={() => deleteOrder(order)}
+                  >
+                    {deletingOrder === order.id ? 'Suppression...' : 'Supprimer cette commande'}
+                  </button>
                 </div>
               ))}
             </div>
