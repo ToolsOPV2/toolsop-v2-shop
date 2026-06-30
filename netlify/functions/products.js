@@ -1,21 +1,19 @@
-import { getProduct, listProducts, json } from './_products.js'
+import { getProduct, json, listProducts } from './_products.js'
 
 export async function handler(event) {
-  if (event.httpMethod === 'OPTIONS') return json(200, { ok: true })
-
-  if (event.httpMethod !== 'GET') {
-    return json(405, {
-      ok: false,
-      error: 'Méthode non autorisée',
-    })
-  }
-
   try {
-    const slug = event.queryStringParameters?.slug
-    const id = event.queryStringParameters?.id
+    if (event.httpMethod !== 'GET') {
+      return json(405, {
+        ok: false,
+        error: 'Méthode non autorisée',
+      })
+    }
 
-    if (slug || id) {
-      const product = await getProduct(slug || id)
+    const params = event.queryStringParameters || {}
+    const productId = params.id || params.slug || ''
+
+    if (productId) {
+      const product = await getProduct(productId)
 
       if (!product) {
         return json(404, {
