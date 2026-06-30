@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import Link from '../components/Link.jsx'
 import { formatPrice } from '../data/products.js'
 
+const PAYPAL_ME_URL = 'https://www.paypal.me/velopointbe'
+const CURRENCY = 'EUR'
+
 function getProductIdFromUrl() {
   const parts = window.location.pathname.split('/').filter(Boolean)
   return parts[parts.length - 1]
@@ -9,6 +12,25 @@ function getProductIdFromUrl() {
 
 function getProductImage(product) {
   return product?.image_url || product?.imageUrl || ''
+}
+
+function buildPaypalMeUrl(product, customerEmail) {
+  const price = Number(product.price || 0).toFixed(2)
+
+  localStorage.setItem(
+    'manual_order',
+    JSON.stringify({
+      productId: product.id,
+      productName: product.name,
+      price,
+      currency: CURRENCY,
+      customerEmail,
+      paypalLink: PAYPAL_ME_URL,
+      createdAt: new Date().toISOString(),
+    })
+  )
+
+  return `${PAYPAL_ME_URL}/${price}`
 }
 
 export default function ProductPage() {
@@ -39,7 +61,7 @@ export default function ProductPage() {
   const isSoldOut = product && Number(product.stock || 0) <= 0
   const productImage = getProductImage(product)
 
-  async function startCheckout(event) {
+  function startCheckout(event) {
     event.preventDefault()
 
     if (!product) {
@@ -57,36 +79,17 @@ export default function ProductPage() {
       return
     }
 
-    try {
-      setLoading(true)
-      setError('')
+    const price = Number(product.price || 0)
 
-      const response = await fetch('/.netlify/functions/paypal-create-order', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          productId: product.id,
-          customerEmail: email,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Impossible de créer la commande PayPal')
-      }
-
-      if (!data.approvalUrl) {
-        throw new Error('Lien PayPal introuvable')
-      }
-
-      window.location.href = data.approvalUrl
-    } catch (error) {
-      setError(error.message)
-      setLoading(false)
+    if (!Number.isFinite(price) || price <= 0) {
+      setError('Prix produit invalide.')
+      return
     }
+
+    setLoading(true)
+    setError('')
+
+    window.location.href = buildPaypalMeUrl(product, email)
   }
 
   if (pageLoading) {
@@ -147,14 +150,14 @@ export default function ProductPage() {
         </div>
 
         <div className="glass-card checkout-card">
-          <span className="eyebrow">Checkout sécurisé</span>
+          <span className="eyebrow">Paiement manuel</span>
 
-          <h2>{isSoldOut ? 'Article indisponible' : 'Commander ce service'}</h2>
+          <h2>{isSoldOut ? 'Article indisponible' : 'Payer avec PayPal.Me'}</h2>
 
           <p>
             {isSoldOut
               ? 'Ce service est actuellement en rupture. Le paiement est désactivé.'
-              : 'Entre ton email. Après paiement PayPal validé, le serveur vérifie le montant et envoie l’email automatiquement.'}
+              : 'Tu vas être redirigé vers PayPal.Me. Après le paiement, garde une preuve de paiement.'}
           </p>
 
           <div className="features-list">
@@ -185,13 +188,13 @@ export default function ProductPage() {
               {isSoldOut
                 ? 'Produit en rupture'
                 : loading
-                  ? 'Redirection vers PayPal...'
-                  : `Payer ${formatPrice(product.price)} avec PayPal`}
+                  ? 'Redirection vers PayPal.Me...'
+                  : `Payer ${formatPrice(product.price)} avec PayPal.Me`}
             </button>
           </form>
 
           <small className="secure-note">
-            Le prix et le stock sont vérifiés côté serveur.
+            Paiement temporaire manuel. Vérifie le paiement PayPal avant livraison.
           </small>
         </div>
       </div>
