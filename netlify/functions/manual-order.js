@@ -34,7 +34,7 @@ function formatDate(value) {
       timeStyle: 'short',
     }).format(new Date(value))
   } catch {
-    return value
+    return value || 'Date inconnue'
   }
 }
 
@@ -42,7 +42,10 @@ async function sendAdminNewOrderEmail({ order }) {
   const apiKey = process.env.RESEND_API_KEY
 
   if (!apiKey) {
-    throw new Error('RESEND_API_KEY manquant')
+    return {
+      sent: false,
+      error: 'RESEND_API_KEY manquant',
+    }
   }
 
   const adminEmail = getAdminNotifyEmail()
@@ -60,7 +63,7 @@ async function sendAdminNewOrderEmail({ order }) {
           <h2 style="margin:0 0 16px;font-size:22px;">Commande en attente</h2>
 
           <p style="line-height:1.7;margin:0 0 16px;">
-            Un client vient de cliquer sur le bouton PayPal.Me. Vérifie le paiement PayPal avant de marquer la commande comme effectuée.
+            Un client vient de cliquer sur PayPal.Me. Vérifie le paiement PayPal avant de marquer la commande comme effectuée.
           </p>
 
           <div style="background:#f7f7f8;border-radius:16px;padding:16px;margin:18px 0;">
@@ -76,10 +79,6 @@ async function sendAdminNewOrderEmail({ order }) {
             Va dans ton panel admin pour valider ou supprimer la commande.
           </p>
         </div>
-
-        <p style="text-align:center;color:#777;margin-top:18px;font-size:13px;">
-          Notification automatique ToolsOp V2.
-        </p>
       </div>
     </div>
   `
@@ -93,8 +92,6 @@ Montant : ${formatPrice(order.amount, order.currency)}
 Statut : ${order.status}
 Date : ${formatDate(order.saved_at || order.paid_at)}
 ID commande : ${order.paypal_order_id}
-
-Vérifie le paiement PayPal.Me avant de marquer la commande comme effectuée.
   `.trim()
 
   const response = await fetch('https://api.resend.com/emails', {
@@ -115,10 +112,17 @@ Vérifie le paiement PayPal.Me avant de marquer la commande comme effectuée.
   const data = await response.json().catch(() => ({}))
 
   if (!response.ok) {
-    throw new Error(data.message || data.error || 'Erreur envoi email admin')
+    return {
+      sent: false,
+      error: data.message || data.error || 'Erreur envoi email admin',
+    }
   }
 
-  return data
+  return {
+    sent: true,
+    id: data.id || null,
+    error: null,
+  }
 }
 
 export async function handler(event) {
@@ -189,23 +193,25 @@ export async function handler(event) {
     const manualOrderId = createManualOrderId()
     const now = new Date().toISOString()
 
+    const payload = {
+      paypal_order_id: manualOrderId,
+      paypal_capture_id: null,
+      product_id: product.id,
+      product_name: product.name || 'Article inconnu',
+      customer_email: customerEmail,
+      amount: price,
+      currency: product.currency || CURRENCY,
+      status: 'PENDING_MANUAL',
+      email_sent: false,
+      email_id: null,
+      email_error: 'En attente de vérification PayPal.Me',
+      paid_at: now,
+      saved_at: now,
+    }
+
     const { data, error } = await supabase
       .from('orders')
-      .insert({
-        paypal_order_id: manualOrderId,
-        paypal_capture_id: null,
-        product_id: product.id,
-        product_name: product.name,
-        customer_email: customerEmail,
-        amount: price,
-        currency: product.currency || CURRENCY,
-        status: 'PENDING_MANUAL',
-        email_sent: false,
-        email_id: null,
-        email_error: 'En attente de vérification PayPal.Me',
-        paid_at: now,
-        saved_at: now,
-      })
+      .insert(payload)
       .select('*')
       .single()
 
@@ -213,29 +219,9 @@ export async function handler(event) {
       throw new Error(error.message)
     }
 
-    let adminNotification = {
-      sent: false,
-      id: null,
-      error: null,
-    }
-
-    try {
-      const emailResult = await sendAdminNewOrderEmail({
-        order: data,
-      })
-
-      adminNotification = {
-        sent: true,
-        id: emailResult.id || null,
-        error: null,
-      }
-    } catch (emailError) {
-      adminNotification = {
-        sent: false,
-        id: null,
-        error: emailError.message,
-      }
-    }
+    const adminNotification = await sendAdminNewOrderEmail({
+      order: data,
+    })
 
     return json(200, {
       ok: true,
