@@ -14,22 +14,8 @@ function getProductImage(product) {
   return product?.image_url || product?.imageUrl || ''
 }
 
-function buildPaypalMeUrl(product, customerEmail) {
+function buildPaypalMeUrl(product) {
   const price = Number(product.price || 0).toFixed(2)
-
-  localStorage.setItem(
-    'manual_order',
-    JSON.stringify({
-      productId: product.id,
-      productName: product.name,
-      price,
-      currency: CURRENCY,
-      customerEmail,
-      paypalLink: PAYPAL_ME_URL,
-      createdAt: new Date().toISOString(),
-    })
-  )
-
   return `${PAYPAL_ME_URL}/${price}`
 }
 
@@ -61,7 +47,7 @@ export default function ProductPage() {
   const isSoldOut = product && Number(product.stock || 0) <= 0
   const productImage = getProductImage(product)
 
-  function startCheckout(event) {
+  async function startCheckout(event) {
     event.preventDefault()
 
     if (!product) {
@@ -86,10 +72,47 @@ export default function ProductPage() {
       return
     }
 
-    setLoading(true)
-    setError('')
+    try {
+      setLoading(true)
+      setError('')
 
-    window.location.href = buildPaypalMeUrl(product, email)
+      const response = await fetch('/.netlify/functions/manual-order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          productId: product.id,
+          customerEmail: email,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Impossible d’ajouter la commande dans l’historique')
+      }
+
+      localStorage.setItem(
+        'manual_order',
+        JSON.stringify({
+          manualOrderId: data.manualOrderId,
+          productId: product.id,
+          productName: product.name,
+          price: price.toFixed(2),
+          currency: product.currency || CURRENCY,
+          customerEmail: email,
+          paypalLink: PAYPAL_ME_URL,
+          status: 'PENDING_MANUAL',
+          createdAt: new Date().toISOString(),
+        })
+      )
+
+      window.location.href = buildPaypalMeUrl(product)
+    } catch (error) {
+      setError(error.message)
+      setLoading(false)
+    }
   }
 
   if (pageLoading) {
@@ -157,7 +180,7 @@ export default function ProductPage() {
           <p>
             {isSoldOut
               ? 'Ce service est actuellement en rupture. Le paiement est désactivé.'
-              : 'Tu vas être redirigé vers PayPal.Me. Après le paiement, garde une preuve de paiement.'}
+              : 'Quand tu cliques sur le bouton, la commande est ajoutée dans l’historique admin, puis tu es redirigé vers PayPal.Me.'}
           </p>
 
           <div className="features-list">
@@ -188,13 +211,13 @@ export default function ProductPage() {
               {isSoldOut
                 ? 'Produit en rupture'
                 : loading
-                  ? 'Redirection vers PayPal.Me...'
+                  ? 'Ajout dans l’historique...'
                   : `Payer ${formatPrice(product.price)} avec PayPal.Me`}
             </button>
           </form>
 
           <small className="secure-note">
-            Paiement temporaire manuel. Vérifie le paiement PayPal avant livraison.
+            <span>Payer en friends and familys seulement !</span>
           </small>
         </div>
       </div>

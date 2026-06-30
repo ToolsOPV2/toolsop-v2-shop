@@ -1,259 +1,298 @@
 import { useEffect, useMemo, useState } from 'react'
 import { formatPrice } from '../data/products.js'
 
-const DISCORD_LOGIN_URL = '/.netlify/functions/discord-login'
-const ADMIN_LOGIN_URL = '/.netlify/functions/admin-login'
-const ADMIN_LOGOUT_URL = '/.netlify/functions/admin-logout'
-const ADMIN_ME_URL = '/.netlify/functions/admin-me'
-const ADMIN_ORDERS_URL = '/.netlify/functions/admin-orders'
-const PRODUCTS_URL = '/.netlify/functions/products'
-const UPDATE_STOCK_URL = '/.netlify/functions/admin-update-stock'
+function formatDate(value) {
+  if (!value) return 'Date inconnue'
+
+  try {
+    return new Intl.DateTimeFormat('fr-BE', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    }).format(new Date(value))
+  } catch {
+    return value
+  }
+}
+
+function getStatusLabel(status) {
+  if (status === 'PENDING_MANUAL') return 'En attente'
+  if (status === 'COMPLETED_MANUAL') return 'Effectuée'
+  if (status === 'PAID') return 'Payée'
+  if (status === 'COMPLETED') return 'Complétée'
+  return status || 'Inconnu'
+}
+
+function getStatusClass(status) {
+  if (status === 'PENDING_MANUAL') return 'status-pending'
+  if (status === 'COMPLETED_MANUAL' || status === 'PAID' || status === 'COMPLETED') {
+    return 'status-completed'
+  }
+  return 'status-neutral'
+}
 
 export default function Admin() {
-  const [session, setSession] = useState({
-    loading: true,
-    authenticated: false,
-    isAdmin: false,
-    method: null,
-    user: null,
-  })
-
-  const [products, setProducts] = useState([])
-  const [stockDrafts, setStockDrafts] = useState({})
-  const [savingStockId, setSavingStockId] = useState(null)
-  const [orders, setOrders] = useState([])
-  const [ordersLoading, setOrdersLoading] = useState(false)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [password, setPassword] = useState('')
   const [loginLoading, setLoginLoading] = useState(false)
+  const [loginError, setLoginError] = useState('')
+
+  const [products, setProducts] = useState([])
+  const [orders, setOrders] = useState([])
+  const [stockValues, setStockValues] = useState({})
+  const [loadingData, setLoadingData] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [savingStock, setSavingStock] = useState('')
+  const [completingOrder, setCompletingOrder] = useState('')
 
-  async function refreshSession() {
+  async function checkAdmin() {
     try {
-      const response = await fetch(ADMIN_ME_URL, {
+      setAuthLoading(true)
+
+      const response = await fetch('/.netlify/functions/admin-me', {
         credentials: 'include',
       })
 
-      const data = await response.json().catch(() => ({}))
-
       if (!response.ok) {
-        setSession({
-          loading: false,
-          authenticated: false,
-          isAdmin: false,
-          method: null,
-          user: null,
-        })
-
+        setIsAdmin(false)
         return
       }
 
-      setSession({
-        loading: false,
-        authenticated: Boolean(data.authenticated),
-        isAdmin: Boolean(data.isAdmin),
-        method: data.method || null,
-        user: data.user || null,
-      })
+      const data = await response.json()
+      setIsAdmin(Boolean(data.ok || data.admin || data.user))
     } catch {
-      setSession({
-        loading: false,
-        authenticated: false,
-        isAdmin: false,
-        method: null,
-        user: null,
-      })
-
-      setError('Impossible de vérifier la session admin.')
+      setIsAdmin(false)
+    } finally {
+      setAuthLoading(false)
     }
   }
 
-  async function loadProducts() {
-    const response = await fetch(PRODUCTS_URL)
-    const data = await response.json().catch(() => ({}))
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Impossible de charger les produits')
-    }
-
-    const list = data.products || []
-    setProducts(list)
-
-    const drafts = {}
-
-    for (const product of list) {
-      drafts[product.id] = String(product.stock || 0)
-    }
-
-    setStockDrafts(drafts)
-  }
-
-  async function loadOrders() {
-    setOrdersLoading(true)
-
+  async function loadData() {
     try {
-      const response = await fetch(ADMIN_ORDERS_URL, {
-        credentials: 'include',
-      })
+      setLoadingData(true)
+      setError('')
 
-      const data = await response.json().catch(() => ({}))
+      const [productsResponse, ordersResponse] = await Promise.all([
+        fetch('/.netlify/functions/products'),
+        fetch('/.netlify/functions/admin-orders', {
+          credentials: 'include',
+        }),
+      ])
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Impossible de lire les commandes')
+      const productsData = await productsResponse.json()
+      const ordersData = await ordersResponse.json()
+
+      if (!productsResponse.ok) {
+        throw new Error(productsData.error || 'Impossible de charger les produits')
       }
 
-      setOrders(data.orders || [])
+      if (!ordersResponse.ok) {
+        throw new Error(ordersData.error || 'Impossible de charger les commandes')
+      }
+
+      const loadedProducts = productsData.products || []
+      const loadedOrders = ordersData.orders || []
+
+      setProducts(loadedProducts)
+      setOrders(loadedOrders)
+
+      const nextStockValues = {}
+
+      for (const product of loadedProducts) {
+        nextStockValues[product.id] = Number(product.stock || 0)
+      }
+
+      setStockValues(nextStockValues)
+    } catch (error) {
+      setError(error.message)
     } finally {
-      setOrdersLoading(false)
+      setLoadingData(false)
     }
   }
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const discordStatus = params.get('discord')
-    const message = params.get('message')
-
-    if (discordStatus === 'denied') {
-      setError("Connexion réussie, mais ton compte n'a pas le rôle Discord admin demandé.")
-    }
-
-    if (discordStatus === 'error') {
-      setError(message || 'Erreur pendant la connexion Discord.')
-    }
-
-    refreshSession()
+    checkAdmin()
   }, [])
 
   useEffect(() => {
-    if (!session.isAdmin) return
+    if (isAdmin) {
+      loadData()
+    }
+  }, [isAdmin])
 
-    Promise.all([loadProducts(), loadOrders()]).catch((error) => setError(error.message))
-  }, [session.isAdmin])
+  const stats = useMemo(() => {
+    const totalRevenue = orders.reduce((sum, order) => {
+      if (order.status === 'PENDING_MANUAL') return sum
+      return sum + Number(order.amount || 0)
+    }, 0)
 
-  async function handlePasswordLogin(event) {
+    const pendingOrders = orders.filter((order) => order.status === 'PENDING_MANUAL').length
+    const completedOrders = orders.filter((order) => order.status !== 'PENDING_MANUAL').length
+    const totalStock = products.reduce((sum, product) => sum + Number(product.stock || 0), 0)
+
+    return {
+      totalRevenue,
+      pendingOrders,
+      completedOrders,
+      totalStock,
+    }
+  }, [orders, products])
+
+  async function loginWithPassword(event) {
     event.preventDefault()
 
     try {
       setLoginLoading(true)
-      setError('')
-      setSuccess('')
+      setLoginError('')
 
-      const response = await fetch(ADMIN_LOGIN_URL, {
+      const response = await fetch('/.netlify/functions/admin-login', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
         body: JSON.stringify({
           password,
         }),
       })
 
-      const data = await response.json().catch(() => ({}))
+      const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Connexion impossible')
+        throw new Error(data.error || 'Connexion refusée')
       }
 
       setPassword('')
-      await refreshSession()
+      setIsAdmin(true)
     } catch (error) {
-      setError(error.message)
+      setLoginError(error.message)
     } finally {
       setLoginLoading(false)
     }
   }
 
-  async function updateStock(product) {
+  async function logout() {
+    await fetch('/.netlify/functions/admin-logout', {
+      method: 'POST',
+      credentials: 'include',
+    }).catch(() => {})
+
+    setIsAdmin(false)
+  }
+
+  async function saveStock(product) {
     try {
-      setSavingStockId(product.id)
+      setSavingStock(product.id)
       setError('')
       setSuccess('')
 
-      const stock = Number(stockDrafts[product.id])
+      const stock = Number(stockValues[product.id] || 0)
 
-      const response = await fetch(UPDATE_STOCK_URL, {
+      if (!Number.isFinite(stock) || stock < 0) {
+        throw new Error('Stock invalide')
+      }
+
+      const response = await fetch('/.netlify/functions/admin-update-stock', {
         method: 'PATCH',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
         body: JSON.stringify({
           productId: product.id,
           stock,
         }),
       })
 
-      const data = await response.json().catch(() => ({}))
+      const data = await response.json()
 
       if (!response.ok) {
         throw new Error(data.error || 'Impossible de modifier le stock')
       }
 
-      await loadProducts()
-      setSuccess(`Stock mis à jour pour ${product.name}.`)
+      setSuccess(`Stock mis à jour pour ${product.name}`)
+      await loadData()
     } catch (error) {
       setError(error.message)
     } finally {
-      setSavingStockId(null)
+      setSavingStock('')
     }
   }
 
-  const stats = useMemo(() => {
-    const revenue = orders.reduce((sum, order) => sum + Number(order.amount || 0), 0)
-    const outOfStock = products.filter((product) => Number(product.stock || 0) <= 0)
+  async function completeManualOrder(order) {
+    const confirmed = window.confirm(
+      `Marquer la commande "${order.product_name}" comme effectuée et envoyer l’email à ${order.customer_email} ?`
+    )
 
-    return {
-      products: products.length,
-      orders: orders.length,
-      revenue,
-      stock: products.reduce((sum, product) => sum + Number(product.stock || 0), 0),
-      outOfStock: outOfStock.length,
+    if (!confirmed) return
+
+    try {
+      setCompletingOrder(order.id)
+      setError('')
+      setSuccess('')
+
+      const response = await fetch('/.netlify/functions/admin-complete-manual-order', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderId: order.id,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Impossible de valider la commande')
+      }
+
+      setSuccess(`Commande effectuée. Email envoyé à ${order.customer_email}.`)
+      await loadData()
+    } catch (error) {
+      setError(error.message)
+      await loadData()
+    } finally {
+      setCompletingOrder('')
     }
-  }, [products, orders])
+  }
 
-  const outOfStockProducts = products.filter((product) => Number(product.stock || 0) <= 0)
-
-  if (session.loading) {
+  if (authLoading) {
     return (
       <section className="section page-section">
         <div className="container narrow">
-          <div className="glass-card admin-login discord-login-card">
-            <img src="/logo.png" alt="ToolsOp V2" />
-            <h1>Vérification admin</h1>
-            <p>Connexion au serveur en cours...</p>
+          <div className="glass-card result-card">
+            <span className="result-icon">⏳</span>
+            <h1>Chargement admin</h1>
+            <p>Vérification de la session...</p>
           </div>
         </div>
       </section>
     )
   }
 
-  if (!session.isAdmin) {
+  if (!isAdmin) {
     return (
       <section className="section page-section">
         <div className="container narrow">
-          <div className="glass-card admin-login discord-login-card">
+          <div className="glass-card admin-login">
             <img src="/logo.png" alt="ToolsOp V2" />
 
-            <span className="eyebrow">Admin Gate</span>
+            <h1>Panel admin</h1>
 
-            <h1>Panel Admin</h1>
+            <p>Connecte-toi avec Discord ou avec le mot de passe admin.</p>
 
-            <p>
-              Connecte-toi avec Discord si tu as le rôle admin, ou utilise le mot de passe de secours.
-            </p>
-
-            {error && <div className="error-box">{error}</div>}
-
-            <a className="btn btn-primary full discord-btn" href={DISCORD_LOGIN_URL}>
-              Se connecter avec Discord
+            <a className="btn btn-primary full discord-btn" href="/.netlify/functions/discord-login">
+              Connexion Discord
             </a>
 
             <div className="admin-separator">
               <span>ou</span>
             </div>
 
-            <form className="admin-password-form" onSubmit={handlePasswordLogin}>
+            <form className="admin-password-form" onSubmit={loginWithPassword}>
               <label htmlFor="admin-password">Mot de passe admin</label>
 
               <input
@@ -262,17 +301,14 @@ export default function Admin() {
                 placeholder="Mot de passe"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                required
               />
 
-              <button className="btn btn-ghost full" type="submit" disabled={loginLoading}>
-                {loginLoading ? 'Connexion...' : 'Connexion avec mot de passe'}
+              {loginError && <div className="error-box">{loginError}</div>}
+
+              <button className="btn btn-primary full" type="submit" disabled={loginLoading}>
+                {loginLoading ? 'Connexion...' : 'Se connecter'}
               </button>
             </form>
-
-            <p className="admin-helper">
-              Lance le projet avec <code>npx netlify-cli dev</code>.
-            </p>
           </div>
         </div>
       </section>
@@ -284,95 +320,117 @@ export default function Admin() {
       <div className="container">
         <div className="admin-heading">
           <div>
-            <span className="eyebrow">Admin</span>
+            <span className="eyebrow">Administration</span>
 
-            <h1>Tableau de bord</h1>
+            <h1>Panel admin</h1>
 
             <p>
-              Accès validé via{' '}
-              <strong>{session.method === 'discord' ? 'Discord' : 'mot de passe'}</strong> pour{' '}
-              <strong>{session.user?.globalName || session.user?.username || 'Admin'}</strong>.
+              Gère le stock, l’historique, les commandes en attente et l’envoi automatique des emails.
             </p>
           </div>
 
-          <a className="btn btn-ghost" href={ADMIN_LOGOUT_URL}>
+          <button className="btn btn-ghost" type="button" onClick={logout}>
             Déconnexion
-          </a>
+          </button>
         </div>
 
         {error && <div className="error-box">{error}</div>}
         {success && <div className="success-box">{success}</div>}
+        {loadingData && <p className="empty-state">Chargement des données...</p>}
 
         <div className="admin-stats">
           <div className="glass-card stat-card">
-            <span>Produits</span>
-            <strong>{stats.products}</strong>
+            <span>Revenus validés</span>
+            <strong>{formatPrice(stats.totalRevenue)}</strong>
           </div>
 
           <div className="glass-card stat-card">
-            <span>Commandes</span>
-            <strong>{stats.orders}</strong>
+            <span>En attente</span>
+            <strong>{stats.pendingOrders}</strong>
           </div>
 
           <div className="glass-card stat-card">
-            <span>Revenus</span>
-            <strong>{formatPrice(stats.revenue)}</strong>
+            <span>Effectuées</span>
+            <strong>{stats.completedOrders}</strong>
           </div>
 
           <div className="glass-card stat-card">
-            <span>Ruptures</span>
-            <strong>{stats.outOfStock}</strong>
+            <span>Stock total</span>
+            <strong>{stats.totalStock}</strong>
           </div>
         </div>
 
         <div className="admin-panels">
-          <div className="glass-card admin-panel">
-            <h2>Historique des commandes</h2>
+          <div className="glass-card admin-panel full-admin-panel">
+            <h2>Commandes en attente</h2>
 
-            {ordersLoading ? (
-              <p className="empty-state">Chargement des commandes...</p>
-            ) : orders.length === 0 ? (
-              <p className="empty-state">Aucune commande enregistrée pour le moment.</p>
-            ) : (
-              <div className="admin-table order-history-table">
-                {orders.map((order) => (
-                  <div className="admin-row order-row" key={order.paypalOrderId}>
-                    <span>{order.emailSent ? '✅' : '⚠️'}</span>
+            <div className="admin-table order-history-table">
+              {orders.filter((order) => order.status === 'PENDING_MANUAL').length === 0 && (
+                <p className="empty-state">Aucune commande en attente.</p>
+              )}
 
-                    <strong>{order.productName}</strong>
+              {orders
+                .filter((order) => order.status === 'PENDING_MANUAL')
+                .map((order) => (
+                  <div className="admin-row order-row manual-order-row" key={order.id || order.paypal_order_id}>
+                    <span className={`order-status-pill ${getStatusClass(order.status)}`}>
+                      {getStatusLabel(order.status)}
+                    </span>
 
-                    <em>{order.customerEmail}</em>
+                    <div>
+                      <b>{order.product_name}</b>
+                      <em>{order.customer_email}</em>
+                      <small>{order.paypal_order_id}</small>
+                    </div>
 
-                    <b>
-                      {order.amount} {order.currency}
-                    </b>
+                    <strong>{formatPrice(order.amount, order.currency || 'EUR')}</strong>
 
-                    <small>ID PayPal : {order.paypalOrderId}</small>
-                    <small>{new Date(order.paidAt || order.savedAt).toLocaleString('fr-FR')}</small>
-                    <small>Email : {order.emailSent ? 'envoyé' : 'non envoyé'}</small>
+                    <button
+                      className="btn btn-primary btn-small"
+                      type="button"
+                      disabled={completingOrder === order.id}
+                      onClick={() => completeManualOrder(order)}
+                    >
+                      {completingOrder === order.id ? 'Envoi...' : 'Marquer effectué'}
+                    </button>
+
+                    <small>{formatDate(order.saved_at || order.paid_at)}</small>
                   </div>
                 ))}
-              </div>
-            )}
+            </div>
           </div>
 
-          <div className="glass-card admin-panel">
-            <h2>Articles en rupture</h2>
+          <div className="glass-card admin-panel full-admin-panel">
+            <h2>Historique complet</h2>
 
-            {outOfStockProducts.length === 0 ? (
-              <p className="empty-state">Aucun article en rupture.</p>
-            ) : (
-              <div className="admin-table">
-                {outOfStockProducts.map((product) => (
-                  <div className="admin-row" key={product.id}>
-                    <span>{product.icon}</span>
-                    <strong>{product.name}</strong>
-                    <em>{product.category}</em>
-                    <b>Rupture</b>
+            <div className="admin-table order-history-table">
+              {orders.length === 0 && <p className="empty-state">Aucune commande enregistrée.</p>}
+
+              {orders.map((order) => (
+                <div className="admin-row order-row" key={order.id || order.paypal_order_id}>
+                  <span className={`order-status-pill ${getStatusClass(order.status)}`}>
+                    {getStatusLabel(order.status)}
+                  </span>
+
+                  <div>
+                    <b>{order.product_name}</b>
+                    <em>{order.customer_email}</em>
+                    <small>{order.paypal_order_id}</small>
+                    {order.email_sent ? (
+                      <small>Email envoyé ✅</small>
+                    ) : order.email_error ? (
+                      <small>Email : {order.email_error}</small>
+                    ) : (
+                      <small>Email non envoyé</small>
+                    )}
                   </div>
-                ))}
-              </div>
-            )}
+
+                  <strong>{formatPrice(order.amount, order.currency || 'EUR')}</strong>
+
+                  <em>{formatDate(order.saved_at || order.paid_at)}</em>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="glass-card admin-panel full-admin-panel">
@@ -381,43 +439,34 @@ export default function Admin() {
             <div className="admin-table stock-admin-table">
               {products.map((product) => (
                 <div className="stock-admin-row" key={product.id}>
-                  <div>
-                    <span className="stock-product-icon">{product.icon}</span>
-                  </div>
+                  <div className="stock-product-icon">{product.icon || '⚡'}</div>
 
                   <div>
                     <strong>{product.name}</strong>
-                    <small>{product.category}</small>
+                    <small>{product.id}</small>
                   </div>
 
-                  <div>
-                    <small>Prix</small>
-                    <b>{formatPrice(product.price)}</b>
-                  </div>
+                  <b>{formatPrice(product.price)}</b>
 
-                  <div>
-                    <small>Stock</small>
-
-                    <input
-                      type="number"
-                      min="0"
-                      value={stockDrafts[product.id] ?? product.stock}
-                      onChange={(event) =>
-                        setStockDrafts((current) => ({
-                          ...current,
-                          [product.id]: event.target.value,
-                        }))
-                      }
-                    />
-                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    value={stockValues[product.id] ?? 0}
+                    onChange={(event) =>
+                      setStockValues((current) => ({
+                        ...current,
+                        [product.id]: event.target.value,
+                      }))
+                    }
+                  />
 
                   <button
                     className="btn btn-primary btn-small"
                     type="button"
-                    disabled={savingStockId === product.id}
-                    onClick={() => updateStock(product)}
+                    disabled={savingStock === product.id}
+                    onClick={() => saveStock(product)}
                   >
-                    {savingStockId === product.id ? 'Sauvegarde...' : 'Sauver'}
+                    {savingStock === product.id ? 'Sauvegarde...' : 'Sauver'}
                   </button>
                 </div>
               ))}

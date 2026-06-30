@@ -2035,3 +2035,49 @@ code {
     height: 230px;
   }
 }
+.order-status-pill {
+  display: inline-flex;
+  width: fit-content;
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.status-pending {
+  color: #ffcf5a;
+  background: rgba(255, 207, 90, 0.12);
+  border: 1px solid rgba(255, 207, 90, 0.28);
+}
+
+.status-completed {
+  color: #45f59b;
+  background: rgba(69, 245, 155, 0.1);
+  border: 1px solid rgba(69, 245, 155, 0.25);
+}
+
+.status-neutral {
+  color: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.manual-order-row {
+  border-color: rgba(255, 207, 90, 0.22);
+  background:
+    linear-gradient(135deg, rgba(255, 207, 90, 0.06), transparent),
+    rgba(0, 0, 0, 0.18);
+}
+
+.order-row .btn {
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .order-row .btn {
+    grid-column: 2;
+    width: 100%;
+  }
+}
