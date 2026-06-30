@@ -78,34 +78,34 @@ export async function getProduct(productIdOrSlug) {
   if (!productIdOrSlug) return null
 
   const supabase = getSupabase()
-  const cleanValue = decodeURIComponent(String(productIdOrSlug))
+  const cleanValue = decodeURIComponent(String(productIdOrSlug)).trim()
 
-  const byId = await supabase
+  const { data: byId, error: byIdError } = await supabase
     .from('products')
     .select('*')
     .eq('id', cleanValue)
     .maybeSingle()
 
-  if (byId.error) {
-    throw new Error(byId.error.message)
+  if (byIdError) {
+    throw new Error(byIdError.message)
   }
 
-  if (byId.data) {
-    return normalizeProduct(byId.data)
+  if (byId) {
+    return normalizeProduct(byId)
   }
 
-  const bySlug = await supabase
+  const { data: bySlug, error: bySlugError } = await supabase
     .from('products')
     .select('*')
     .eq('slug', cleanValue)
     .maybeSingle()
 
-  if (bySlug.error) {
-    throw new Error(bySlug.error.message)
+  if (bySlugError) {
+    throw new Error(bySlugError.message)
   }
 
-  if (bySlug.data) {
-    return normalizeProduct(bySlug.data)
+  if (bySlug) {
+    return normalizeProduct(bySlug)
   }
 
   return null

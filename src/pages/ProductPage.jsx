@@ -81,10 +81,11 @@ export default function ProductPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          productId: product.id,
-          customerEmail: email,
-        }),
+       body: JSON.stringify({
+  productId: product.id,
+  productSlug: product.slug,
+  customerEmail: email,
+}),
       })
 
       const data = await response.json()

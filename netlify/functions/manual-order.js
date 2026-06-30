@@ -24,13 +24,15 @@ export async function handler(event) {
 
   try {
     const body = JSON.parse(event.body || '{}')
+
     const productId = String(body.productId || '').trim()
+    const productSlug = String(body.productSlug || '').trim()
     const customerEmail = String(body.customerEmail || '').trim()
 
-    if (!productId) {
+    if (!productId && !productSlug) {
       return json(400, {
         ok: false,
-        error: 'productId manquant',
+        error: 'productId ou productSlug manquant',
       })
     }
 
@@ -41,12 +43,20 @@ export async function handler(event) {
       })
     }
 
-    const product = await getProduct(productId)
+    let product = null
+
+    if (productId) {
+      product = await getProduct(productId)
+    }
+
+    if (!product && productSlug) {
+      product = await getProduct(productSlug)
+    }
 
     if (!product) {
       return json(404, {
         ok: false,
-        error: 'Produit introuvable côté serveur',
+        error: `Produit introuvable côté serveur: ${productId || productSlug}`,
       })
     }
 
