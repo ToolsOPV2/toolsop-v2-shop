@@ -2607,3 +2607,11 @@ code {
     grid-template-columns: 1fr;
   }
 }
+.reviews-top {
+  margin-top: 92px;
+}
+@media (max-width: 760px) {
+  .reviews-top {
+    margin-top: 82px;
+  }
+}
