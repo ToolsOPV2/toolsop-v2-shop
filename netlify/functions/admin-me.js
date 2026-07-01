@@ -1,10 +1,8 @@
-import { json } from './_products.js'
 import { getAdminSession } from './_admin-auth.js'
+import { json } from './_products.js'
 
 export async function handler(event) {
-  if (event.httpMethod === 'OPTIONS') {
-    return json(200, { ok: true })
-  }
+  if (event.httpMethod === 'OPTIONS') return json(200, { ok: true })
 
   if (event.httpMethod !== 'GET') {
     return json(405, {
@@ -13,21 +11,23 @@ export async function handler(event) {
     })
   }
 
-  const session = getAdminSession(event)
+  const session = await getAdminSession(event)
 
-  if (!session.ok) {
+  if (!session) {
     return json(401, {
       ok: false,
-      authenticated: false,
-      isAdmin: false,
+      admin: false,
+      error: 'Non connecté admin',
     })
   }
 
   return json(200, {
     ok: true,
-    authenticated: true,
-    isAdmin: true,
-    method: session.method,
-    user: session.user,
+    admin: true,
+    user: {
+      id: session.id || null,
+      username: session.username || session.globalName || 'Admin',
+      source: session.source || 'unknown',
+    },
   })
 }

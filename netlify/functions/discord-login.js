@@ -1,51 +1,39 @@
-const API_BASE = 'https://discord.com/api/v10'
-
-function required(name) {
-  const value = process.env[name]
-
-  if (!value) {
-    throw new Error(`Variable manquante: ${name}`)
-  }
-
-  return value
-}
-
 function getSiteUrl(event) {
-  return (process.env.SITE_URL || event.headers.origin || 'http://localhost:8888').replace(/\/$/, '')
+  return (process.env.SITE_URL || `https://${event.headers.host}`).replace(/\/$/, '')
 }
 
 export async function handler(event) {
-  try {
-    const baseUrl = getSiteUrl(event)
-    const clientId = required('DISCORD_CLIENT_ID')
-    const redirectUri = `${baseUrl}/.netlify/functions/discord-callback`
+  const clientId = process.env.DISCORD_CLIENT_ID
 
-    const authorizeUrl = new URL(`${API_BASE}/oauth2/authorize`)
-
-    authorizeUrl.searchParams.set('client_id', clientId)
-    authorizeUrl.searchParams.set('redirect_uri', redirectUri)
-    authorizeUrl.searchParams.set('response_type', 'code')
-    authorizeUrl.searchParams.set('scope', 'identify')
-
-    return {
-      statusCode: 302,
-      headers: {
-        Location: authorizeUrl.toString(),
-        'Cache-Control': 'no-store',
-      },
-      body: '',
-    }
-  } catch (error) {
+  if (!clientId) {
     return {
       statusCode: 500,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'no-store',
       },
       body: JSON.stringify({
         ok: false,
-        error: error.message,
+        error: 'DISCORD_CLIENT_ID manquant',
       }),
     }
+  }
+
+  const siteUrl = getSiteUrl(event)
+  const redirectUri = `${siteUrl}/.netlify/functions/discord-callback`
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'identify',
+    prompt: 'consent',
+  })
+
+  return {
+    statusCode: 302,
+    headers: {
+      Location: `https://discord.com/oauth2/authorize?${params.toString()}`,
+    },
+    body: '',
   }
 }

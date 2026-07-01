@@ -92,7 +92,7 @@ export async function getAdminSession(event = {}) {
       }
     }
 
-    const discordSession = await getDiscordSession(event)
+    const discordSession = getDiscordSession(event)
 
     if (discordSession?.isAdmin || discordSession?.admin) {
       return {

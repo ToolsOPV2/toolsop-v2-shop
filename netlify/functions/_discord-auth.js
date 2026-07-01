@@ -1,3 +1,5 @@
+import crypto from 'node:crypto'
+
 const DISCORD_COOKIE = 'toolsop_discord_session'
 const DISCORD_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 
@@ -13,21 +15,21 @@ function base64UrlDecode(value) {
   return Buffer.from(value, 'base64url').toString('utf8')
 }
 
-async function sign(value) {
-  const crypto = await import('node:crypto')
+function sign(value) {
   return crypto.createHmac('sha256', getSecret()).update(value).digest('base64url')
 }
 
-function getCookieHeader(event) {
+function getCookieHeader(event = {}) {
   return event.headers?.cookie || event.headers?.Cookie || ''
 }
 
-function parseCookies(event) {
+function parseCookies(event = {}) {
   const header = getCookieHeader(event)
   const cookies = {}
 
   for (const part of header.split(';')) {
     const [rawKey, ...rawValue] = part.trim().split('=')
+
     if (!rawKey) continue
 
     cookies[rawKey] = decodeURIComponent(rawValue.join('=') || '')
@@ -36,38 +38,37 @@ function parseCookies(event) {
   return cookies
 }
 
-function shouldUseSecureCookie(event) {
+function shouldUseSecureCookie(event = {}) {
   const siteUrl = process.env.SITE_URL || ''
   const origin = event.headers?.origin || event.headers?.Origin || ''
   const host = event.headers?.host || event.headers?.Host || ''
 
-  return (
-    siteUrl.startsWith('https://') ||
-    origin.startsWith('https://') ||
-    host.includes('onrender.com')
-  )
+  return siteUrl.startsWith('https://') || origin.startsWith('https://') || host.includes('onrender.com')
 }
 
-export async function createDiscordSessionCookie(session, event) {
+export function createDiscordSessionCookie(session = {}, event = {}) {
   const payload = base64UrlEncode(
     JSON.stringify({
       ...session,
+      admin: true,
+      isAdmin: true,
       createdAt: Date.now(),
     })
   )
 
-  const signature = await sign(payload)
+  const signature = sign(payload)
   const secure = shouldUseSecureCookie(event) ? '; Secure' : ''
 
   return `${DISCORD_COOKIE}=${payload}.${signature}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${DISCORD_COOKIE_MAX_AGE}${secure}`
 }
 
-export function clearDiscordSessionCookie(event) {
+export function clearDiscordSessionCookie(event = {}) {
   const secure = shouldUseSecureCookie(event) ? '; Secure' : ''
+
   return `${DISCORD_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`
 }
 
-export async function getDiscordSession(event) {
+export function getDiscordSession(event = {}) {
   try {
     const cookies = parseCookies(event)
     const value = cookies[DISCORD_COOKIE]
@@ -77,7 +78,7 @@ export async function getDiscordSession(event) {
     }
 
     const [payload, signature] = value.split('.')
-    const expectedSignature = await sign(payload)
+    const expectedSignature = sign(payload)
 
     if (signature !== expectedSignature) {
       return null
@@ -85,11 +86,16 @@ export async function getDiscordSession(event) {
 
     const session = JSON.parse(base64UrlDecode(payload))
 
-    if (!session?.isAdmin) {
+    if (!session?.isAdmin && !session?.admin) {
       return null
     }
 
-    return session
+    return {
+      ...session,
+      admin: true,
+      isAdmin: true,
+      source: 'discord',
+    }
   } catch {
     return null
   }
