@@ -2608,10 +2608,14 @@ code {
   }
 }
 .reviews-top {
-  margin-top: 92px;
+  margin-top: 135px !important;
 }
+.reviews-top {
+  margin-top: 150px !important;
+}
+
 @media (max-width: 760px) {
   .reviews-top {
-    margin-top: 82px;
+    margin-top: 125px !important;
   }
 }
