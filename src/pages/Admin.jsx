@@ -49,6 +49,16 @@ export default function Admin() {
   const [completingOrder, setCompletingOrder] = useState('')
   const [deletingOrder, setDeletingOrder] = useState('')
   const [deletingAllOrders, setDeletingAllOrders] = useState(false)
+  const [reviews, setReviews] = useState([])
+const [reviewForm, setReviewForm] = useState({
+  name: '',
+  rating: 5,
+  message: '',
+  position: 0,
+  is_active: true,
+})
+const [savingReview, setSavingReview] = useState(false)
+const [deletingReview, setDeletingReview] = useState('')
 
   async function checkAdmin() {
     try {
@@ -138,7 +148,17 @@ export default function Admin() {
     const pendingOrdersCount = orders.filter((order) => order.status === 'PENDING_MANUAL').length
     const completedOrders = orders.filter((order) => order.status !== 'PENDING_MANUAL').length
     const totalStock = products.reduce((sum, product) => sum + Number(product.stock || 0), 0)
+const reviewsResponse = await fetch('/.netlify/functions/admin-reviews', {
+  credentials: 'include',
+})
 
+const reviewsData = await reviewsResponse.json()
+
+if (!reviewsResponse.ok) {
+  throw new Error(reviewsData.error || 'Impossible de charger les évaluations')
+}
+
+setReviews(reviewsData.reviews || [])
     return {
       totalRevenue,
       pendingOrdersCount,
@@ -188,7 +208,113 @@ export default function Admin() {
 
     setIsAdmin(false)
   }
+async function createReview(event) {
+  event.preventDefault()
 
+  try {
+    setSavingReview(true)
+    setError('')
+    setSuccess('')
+
+    const response = await fetch('/.netlify/functions/admin-reviews', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(reviewForm),
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Impossible d’ajouter l’évaluation')
+    }
+
+    setReviewForm({
+      name: '',
+      rating: 5,
+      message: '',
+      position: 0,
+      is_active: true,
+    })
+
+    setSuccess('Évaluation ajoutée.')
+    await loadData()
+  } catch (error) {
+    setError(error.message)
+  } finally {
+    setSavingReview(false)
+  }
+}
+
+async function toggleReview(review) {
+  try {
+    setError('')
+    setSuccess('')
+
+    const response = await fetch('/.netlify/functions/admin-reviews', {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: review.id,
+        is_active: !review.is_active,
+      }),
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Impossible de modifier l’évaluation')
+    }
+
+    setSuccess('Évaluation modifiée.')
+    await loadData()
+  } catch (error) {
+    setError(error.message)
+  }
+}
+
+async function deleteReview(review) {
+  const confirmed = window.confirm(
+    `Supprimer cette évaluation ?\n\n${review.name} - ${review.rating}/5\n${review.message}`
+  )
+
+  if (!confirmed) return
+
+  try {
+    setDeletingReview(review.id)
+    setError('')
+    setSuccess('')
+
+    const response = await fetch('/.netlify/functions/admin-reviews', {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: review.id,
+      }),
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Impossible de supprimer l’évaluation')
+    }
+
+    setSuccess('Évaluation supprimée.')
+    await loadData()
+  } catch (error) {
+    setError(error.message)
+  } finally {
+    setDeletingReview('')
+  }
+}
   async function saveStock(product) {
     try {
       setSavingStock(product.id)
@@ -597,7 +723,120 @@ export default function Admin() {
               ))}
             </div>
           </div>
+<div className="glass-card admin-panel full-admin-panel">
+  <h2>Évaluations du site</h2>
 
+  <form className="review-admin-form" onSubmit={createReview}>
+    <div className="review-admin-grid">
+      <input
+        type="text"
+        placeholder="Nom affiché, ex: Lucas"
+        value={reviewForm.name}
+        onChange={(event) =>
+          setReviewForm((current) => ({
+            ...current,
+            name: event.target.value,
+          }))
+        }
+      />
+
+      <select
+        value={reviewForm.rating}
+        onChange={(event) =>
+          setReviewForm((current) => ({
+            ...current,
+            rating: Number(event.target.value),
+          }))
+        }
+      >
+        <option value="5">5 étoiles</option>
+        <option value="4">4 étoiles</option>
+        <option value="3">3 étoiles</option>
+        <option value="2">2 étoiles</option>
+        <option value="1">1 étoile</option>
+      </select>
+
+      <input
+        type="number"
+        placeholder="Position"
+        value={reviewForm.position}
+        onChange={(event) =>
+          setReviewForm((current) => ({
+            ...current,
+            position: Number(event.target.value),
+          }))
+        }
+      />
+    </div>
+
+    <textarea
+      placeholder="Message de l’évaluation"
+      value={reviewForm.message}
+      onChange={(event) =>
+        setReviewForm((current) => ({
+          ...current,
+          message: event.target.value,
+        }))
+      }
+    />
+
+    <label className="review-checkbox">
+      <input
+        type="checkbox"
+        checked={reviewForm.is_active}
+        onChange={(event) =>
+          setReviewForm((current) => ({
+            ...current,
+            is_active: event.target.checked,
+          }))
+        }
+      />
+      Afficher sur le site
+    </label>
+
+    <button className="btn btn-primary full" type="submit" disabled={savingReview}>
+      {savingReview ? 'Ajout...' : 'Ajouter l’évaluation'}
+    </button>
+  </form>
+
+  <div className="review-admin-list">
+    {reviews.length === 0 && <p className="empty-state">Aucune évaluation.</p>}
+
+    {reviews.map((review) => (
+      <div className="review-admin-card" key={review.id}>
+        <div>
+          <strong>{review.name || 'Client'}</strong>
+          <span>
+            {'★'.repeat(Number(review.rating || 5))}
+            {'☆'.repeat(5 - Number(review.rating || 5))}
+          </span>
+        </div>
+
+        <p>{review.message}</p>
+
+        <small>
+          Position : {review.position || 0} —{' '}
+          {review.is_active ? 'Visible sur le site' : 'Masquée'}
+        </small>
+
+        <div className="review-admin-actions">
+          <button className="btn btn-ghost" type="button" onClick={() => toggleReview(review)}>
+            {review.is_active ? 'Masquer' : 'Afficher'}
+          </button>
+
+          <button
+            className="btn btn-ghost danger-btn"
+            type="button"
+            disabled={deletingReview === review.id}
+            onClick={() => deleteReview(review)}
+          >
+            {deletingReview === review.id ? 'Suppression...' : 'Supprimer'}
+          </button>
+        </div>
+      </div>
+    ))}
+  </div>
+</div>
           <div className="glass-card admin-panel full-admin-panel">
             <h2>Gestion du stock</h2>
 

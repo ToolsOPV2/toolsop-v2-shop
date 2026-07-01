@@ -14,6 +14,7 @@ import Contact from './pages/Contact.jsx'
 import Admin from './pages/Admin.jsx'
 import Legal from './pages/Legal.jsx'
 import NotFound from './pages/NotFound.jsx'
+import ReviewsTop from './components/ReviewsTop.jsx'
 
 function getRoute() {
   const { pathname } = window.location
@@ -66,7 +67,12 @@ function App() {
     }
   }, [route])
 
-  return <Layout route={route} totalProducts={products.length}>{content}</Layout>
+   return (
+    <Layout route={route} totalProducts={products.length}>
+      {route.name !== 'admin' && <ReviewsTop />}
+      {content}
+    </Layout>
+  )
 }
 
 createRoot(document.getElementById('root')).render(<App />)
