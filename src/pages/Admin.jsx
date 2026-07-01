@@ -37,6 +37,49 @@ function getStars(rating) {
   return `${'★'.repeat(value)}${'☆'.repeat(5 - value)}`
 }
 
+function isValidCustomerEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim())
+}
+
+function getOrderReplyUrl(order) {
+  const email = String(order.customer_email || '').trim()
+
+  if (!isValidCustomerEmail(email)) {
+    return ''
+  }
+
+  const productName = order.product_name || 'votre commande'
+  const orderId = order.paypal_order_id || order.id || 'ID inconnu'
+  const amount = formatPrice(order.amount, order.currency || 'EUR')
+
+  const subject = 'Réponse à votre commande ToolsOp V2'
+
+  const body = `
+Bonjour,
+
+Je vous contacte concernant votre commande ToolsOp V2.
+
+Article : ${productName}
+Montant : ${amount}
+ID commande : ${orderId}
+
+Votre message ici...
+
+Cordialement,
+ToolsOp V2
+  `.trim()
+
+  const params = new URLSearchParams({
+    view: 'cm',
+    fs: '1',
+    to: email,
+    su: subject,
+    body,
+  })
+
+  return `https://mail.google.com/mail/?${params.toString()}`
+}
+
 export default function Admin() {
   const [authLoading, setAuthLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
@@ -556,7 +599,7 @@ export default function Admin() {
             <h1>Panel admin</h1>
 
             <p>
-              Vérifie les commandes, gère le stock et ajoute les évaluations affichées sur le site.
+              Vérifie les commandes, gère le stock et réponds aux clients directement par email.
             </p>
           </div>
 
@@ -659,6 +702,21 @@ export default function Admin() {
                         : 'Marquer effectué + envoyer email'}
                     </button>
 
+                    {isValidCustomerEmail(order.customer_email) ? (
+                      <a
+                        className="btn btn-ghost full"
+                        href={getOrderReplyUrl(order)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Répondre à l&apos;email
+                      </a>
+                    ) : (
+                      <button className="btn btn-ghost full" type="button" disabled>
+                        Email indisponible
+                      </button>
+                    )}
+
                     <button
                       className="btn btn-ghost danger-btn full"
                       type="button"
@@ -722,14 +780,31 @@ export default function Admin() {
                     </div>
                   </div>
 
-                  <button
-                    className="btn btn-ghost danger-btn full"
-                    type="button"
-                    disabled={deletingOrder === order.id}
-                    onClick={() => deleteOrder(order)}
-                  >
-                    {deletingOrder === order.id ? 'Suppression...' : 'Supprimer cette commande'}
-                  </button>
+                  <div className="manual-order-actions history-actions">
+                    {isValidCustomerEmail(order.customer_email) ? (
+                      <a
+                        className="btn btn-ghost full"
+                        href={getOrderReplyUrl(order)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Répondre à l&apos;email
+                      </a>
+                    ) : (
+                      <button className="btn btn-ghost full" type="button" disabled>
+                        Email indisponible
+                      </button>
+                    )}
+
+                    <button
+                      className="btn btn-ghost danger-btn full"
+                      type="button"
+                      disabled={deletingOrder === order.id}
+                      onClick={() => deleteOrder(order)}
+                    >
+                      {deletingOrder === order.id ? 'Suppression...' : 'Supprimer cette commande'}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

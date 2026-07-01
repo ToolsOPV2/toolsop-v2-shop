@@ -2619,3 +2619,19 @@ code {
     margin-top: 125px !important;
   }
 }
+.manual-order-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.manual-order-actions.history-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 760px) {
+  .manual-order-actions,
+  .manual-order-actions.history-actions {
+    grid-template-columns: 1fr;
+  }
+}
