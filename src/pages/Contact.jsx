@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 const SUPPORT_EMAIL = 'vttobj@gmail.com'
-const DISCORD_INVITE = '#'
+const DISCORD_INVITE = 'https://discord.gg/P3SE53Druv'
 
 export default function Contact() {
   const [form, setForm] = useState({
