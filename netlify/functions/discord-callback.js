@@ -25,6 +25,13 @@ function errorRedirect(event, message) {
   return redirect(`${siteUrl}/admin?error=${encodeURIComponent(message)}`)
 }
 
+function getAdminUserIds() {
+  return String(process.env.DISCORD_ADMIN_USER_IDS || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean)
+}
+
 async function discordRequest(url, options = {}) {
   const response = await fetch(url, options)
   const data = await response.json().catch(() => ({}))
@@ -48,12 +55,9 @@ export async function handler(event) {
 
     const clientId = process.env.DISCORD_CLIENT_ID
     const clientSecret = process.env.DISCORD_CLIENT_SECRET
-    const botToken = process.env.DISCORD_BOT_TOKEN
-    const guildId = process.env.DISCORD_GUILD_ID
-    const adminRoleId = process.env.DISCORD_ADMIN_ROLE_ID
 
-    if (!clientId || !clientSecret || !botToken || !guildId || !adminRoleId) {
-      return errorRedirect(event, 'Variables Discord manquantes sur Render')
+    if (!clientId || !clientSecret) {
+      return errorRedirect(event, 'DISCORD_CLIENT_ID ou DISCORD_CLIENT_SECRET manquant')
     }
 
     const redirectUri = `${siteUrl}/.netlify/functions/discord-callback`
@@ -80,20 +84,14 @@ export async function handler(event) {
       },
     })
 
-    const member = await discordRequest(
-      `https://discord.com/api/guilds/${guildId}/members/${user.id}`,
-      {
-        headers: {
-          Authorization: `Bot ${botToken}`,
-        },
-      }
-    )
+    const adminUserIds = getAdminUserIds()
+    const isAdminByUserId = adminUserIds.includes(user.id)
 
-    const roles = member.roles || []
-    const isAdmin = roles.includes(adminRoleId)
-
-    if (!isAdmin) {
-      return errorRedirect(event, 'Tu n’as pas le rôle admin Discord')
+    if (!isAdminByUserId) {
+      return errorRedirect(
+        event,
+        `Ton compte Discord n'est pas admin. Ton ID Discord est: ${user.id}`
+      )
     }
 
     const session = {
@@ -101,7 +99,6 @@ export async function handler(event) {
       username: user.username,
       globalName: user.global_name || user.username,
       avatar: user.avatar || null,
-      roles,
       admin: true,
       isAdmin: true,
       source: 'discord',
