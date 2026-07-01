@@ -1,135 +1,133 @@
 import crypto from 'node:crypto'
 import { getDiscordSession } from './_discord-auth.js'
 
-const PASSWORD_COOKIE_NAME = 'toolsop_password_admin'
-const DISCORD_COOKIE_NAME = 'toolsop_discord_admin'
-const MAX_AGE = 60 * 60 * 24 * 7
+const ADMIN_COOKIE = 'toolsop_admin_session'
+const ADMIN_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 
 function getSecret() {
-  return process.env.ADMIN_AUTH_SECRET || process.env.DISCORD_AUTH_SECRET || 'dev-secret-change-me'
+  return process.env.ADMIN_AUTH_SECRET || process.env.DISCORD_AUTH_SECRET || 'toolsop_admin_secret_change_me'
 }
 
-function parseCookies(cookieHeader = '') {
-  return Object.fromEntries(
-    cookieHeader
-      .split(';')
-      .map((part) => {
-        const [key, ...value] = part.trim().split('=')
-        return [key, value.join('=')]
-      })
-      .filter(([key]) => key)
+function base64UrlEncode(value) {
+  return Buffer.from(value).toString('base64url')
+}
+
+function base64UrlDecode(value) {
+  return Buffer.from(value, 'base64url').toString('utf8')
+}
+
+function sign(value) {
+  return crypto.createHmac('sha256', getSecret()).update(value).digest('base64url')
+}
+
+function getCookieHeader(event = {}) {
+  return event.headers?.cookie || event.headers?.Cookie || ''
+}
+
+function parseCookies(event = {}) {
+  const header = getCookieHeader(event)
+  const cookies = {}
+
+  for (const part of header.split(';')) {
+    const [rawKey, ...rawValue] = part.trim().split('=')
+
+    if (!rawKey) continue
+
+    cookies[rawKey] = decodeURIComponent(rawValue.join('=') || '')
+  }
+
+  return cookies
+}
+
+function shouldUseSecureCookie(event = {}) {
+  const siteUrl = process.env.SITE_URL || ''
+  const origin = event.headers?.origin || event.headers?.Origin || ''
+  const host = event.headers?.host || event.headers?.Host || ''
+
+  return siteUrl.startsWith('https://') || origin.startsWith('https://') || host.includes('onrender.com')
+}
+
+export function createAdminSessionCookie(session = {}, event = {}) {
+  const payload = base64UrlEncode(
+    JSON.stringify({
+      ...session,
+      admin: true,
+      isAdmin: true,
+      createdAt: Date.now(),
+    })
   )
+
+  const signature = sign(payload)
+  const secure = shouldUseSecureCookie(event) ? '; Secure' : ''
+
+  return `${ADMIN_COOKIE}=${payload}.${signature}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${ADMIN_COOKIE_MAX_AGE}${secure}`
 }
 
-function base64url(input) {
-  return Buffer.from(input).toString('base64url')
+export function clearAdminSessionCookie(event = {}) {
+  const secure = shouldUseSecureCookie(event) ? '; Secure' : ''
+
+  return `${ADMIN_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`
 }
 
-function signPayload(payload, secret) {
-  const encoded = base64url(JSON.stringify(payload))
-  const signature = crypto.createHmac('sha256', secret).update(encoded).digest('base64url')
+export async function getAdminSession(event = {}) {
+  try {
+    const cookies = parseCookies(event)
+    const value = cookies[ADMIN_COOKIE]
 
-  return `${encoded}.${signature}`
-}
+    if (value && value.includes('.')) {
+      const [payload, signature] = value.split('.')
+      const expectedSignature = sign(payload)
 
-function verifyPayload(token, secret) {
-  const [encoded, signature] = String(token || '').split('.')
+      if (signature === expectedSignature) {
+        const session = JSON.parse(base64UrlDecode(payload))
 
-  if (!encoded || !signature) return null
-
-  const expected = crypto.createHmac('sha256', secret).update(encoded).digest('base64url')
-
-  const signatureBuffer = Buffer.from(signature)
-  const expectedBuffer = Buffer.from(expected)
-
-  if (signatureBuffer.length !== expectedBuffer.length) return null
-
-  const valid = crypto.timingSafeEqual(signatureBuffer, expectedBuffer)
-
-  if (!valid) return null
-
-  const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'))
-
-  if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) return null
-
-  return payload
-}
-
-export function createPasswordSession() {
-  const payload = {
-    type: 'password-admin',
-    isAdmin: true,
-    username: 'Admin Password',
-    exp: Math.floor(Date.now() / 1000) + MAX_AGE,
-  }
-
-  return signPayload(payload, getSecret())
-}
-
-export function makePasswordCookie(value, secure = false) {
-  return [
-    `${PASSWORD_COOKIE_NAME}=${value}`,
-    'Path=/',
-    'HttpOnly',
-    'SameSite=Lax',
-    `Max-Age=${MAX_AGE}`,
-    secure ? 'Secure' : '',
-  ]
-    .filter(Boolean)
-    .join('; ')
-}
-
-export function clearAdminCookies(secure = false) {
-  const suffix = `Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure ? '; Secure' : ''}`
-
-  return [
-    `${PASSWORD_COOKIE_NAME}=; ${suffix}`,
-    `${DISCORD_COOKIE_NAME}=; ${suffix}`,
-  ]
-}
-
-export function getPasswordSession(event) {
-  const cookies = parseCookies(event.headers.cookie || event.headers.Cookie || '')
-  const token = cookies[PASSWORD_COOKIE_NAME]
-
-  return verifyPayload(token, getSecret())
-}
-
-export function getAdminSession(event) {
-  const discordSession = getDiscordSession(event)
-
-  if (discordSession?.isAdmin) {
-    return {
-      ok: true,
-      method: 'discord',
-      user: {
-        username: discordSession.username,
-        globalName: discordSession.globalName,
-        id: discordSession.sub,
-      },
+        if (session?.admin || session?.isAdmin) {
+          return {
+            ...session,
+            admin: true,
+            isAdmin: true,
+            source: session.source || 'password',
+          }
+        }
+      }
     }
+
+    const discordSession = await getDiscordSession(event)
+
+    if (discordSession?.isAdmin || discordSession?.admin) {
+      return {
+        ...discordSession,
+        admin: true,
+        isAdmin: true,
+        source: 'discord',
+      }
+    }
+
+    return null
+  } catch {
+    return null
   }
+}
 
-  const passwordSession = getPasswordSession(event)
+export async function requireAdmin(event = {}) {
+  const session = await getAdminSession(event)
 
-  if (passwordSession?.isAdmin) {
+  if (!session) {
     return {
-      ok: true,
-      method: 'password',
-      user: {
-        username: 'Admin Password',
-        globalName: 'Admin Password',
+      statusCode: 401,
+      headers: {
+        'Content-Type': 'application/json',
       },
+      body: JSON.stringify({
+        ok: false,
+        error: 'Accès refusé. Connexion admin requise.',
+      }),
     }
   }
 
   return {
-    ok: false,
-    method: null,
-    user: null,
+    ok: true,
+    admin: true,
+    session,
   }
-}
-
-export function requireAdmin(event) {
-  return getAdminSession(event)
 }
