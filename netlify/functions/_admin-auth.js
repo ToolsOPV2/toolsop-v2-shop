@@ -1,5 +1,4 @@
 import crypto from 'node:crypto'
-import { getDiscordSession } from './_discord-auth.js'
 
 const ADMIN_COOKIE = 'toolsop_admin_session'
 const ADMIN_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
@@ -74,36 +73,29 @@ export async function getAdminSession(event = {}) {
     const cookies = parseCookies(event)
     const value = cookies[ADMIN_COOKIE]
 
-    if (value && value.includes('.')) {
-      const [payload, signature] = value.split('.')
-      const expectedSignature = sign(payload)
-
-      if (signature === expectedSignature) {
-        const session = JSON.parse(base64UrlDecode(payload))
-
-        if (session?.admin || session?.isAdmin) {
-          return {
-            ...session,
-            admin: true,
-            isAdmin: true,
-            source: session.source || 'password',
-          }
-        }
-      }
+    if (!value || !value.includes('.')) {
+      return null
     }
 
-    const discordSession = getDiscordSession(event)
+    const [payload, signature] = value.split('.')
+    const expectedSignature = sign(payload)
 
-    if (discordSession?.isAdmin || discordSession?.admin) {
-      return {
-        ...discordSession,
-        admin: true,
-        isAdmin: true,
-        source: 'discord',
-      }
+    if (signature !== expectedSignature) {
+      return null
     }
 
-    return null
+    const session = JSON.parse(base64UrlDecode(payload))
+
+    if (!session?.admin && !session?.isAdmin) {
+      return null
+    }
+
+    return {
+      ...session,
+      admin: true,
+      isAdmin: true,
+      source: session.source || 'admin',
+    }
   } catch {
     return null
   }

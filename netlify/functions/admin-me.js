@@ -27,7 +27,7 @@ export async function handler(event) {
     user: {
       id: session.id || null,
       username: session.username || session.globalName || 'Admin',
-      source: session.source || 'unknown',
+      source: session.source || 'admin',
     },
   })
 }

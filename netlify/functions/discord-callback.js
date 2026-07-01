@@ -1,17 +1,21 @@
-import { createDiscordSessionCookie } from './_discord-auth.js'
 import { createAdminSessionCookie } from './_admin-auth.js'
 
 function getSiteUrl(event) {
   return (process.env.SITE_URL || `https://${event.headers.host}`).replace(/\/$/, '')
 }
 
-function redirect(location, cookies = []) {
+function redirect(location, cookie = '') {
+  const headers = {
+    Location: location,
+  }
+
+  if (cookie) {
+    headers['Set-Cookie'] = cookie
+  }
+
   return {
     statusCode: 302,
-    headers: {
-      Location: location,
-      'Set-Cookie': cookies,
-    },
+    headers,
     body: '',
   }
 }
@@ -103,10 +107,9 @@ export async function handler(event) {
       source: 'discord',
     }
 
-    const discordCookie = createDiscordSessionCookie(session, event)
     const adminCookie = createAdminSessionCookie(session, event)
 
-    return redirect(`${siteUrl}/admin`, [discordCookie, adminCookie])
+    return redirect(`${siteUrl}/admin?discord=ok`, adminCookie)
   } catch (error) {
     return errorRedirect(event, error.message)
   }
