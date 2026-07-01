@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 function Stars({ rating }) {
-  const value = Number(rating || 5)
+  const value = Math.max(1, Math.min(5, Number(rating || 5)))
 
   return (
     <span className="review-stars">
@@ -37,7 +37,7 @@ export default function ReviewsTop() {
     <section className="reviews-top">
       <div className="reviews-track">
         {[...reviews, ...reviews].map((review, index) => (
-          <div className="review-pill" key={`${review.id}-${index}`}>
+          <div className="review-pill" key={`${review.id || index}-${index}`}>
             <div className="review-pill-head">
               <strong>{review.name || 'Client'}</strong>
               <Stars rating={review.rating} />

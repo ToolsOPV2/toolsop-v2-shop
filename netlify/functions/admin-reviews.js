@@ -97,6 +97,13 @@ export async function handler(event) {
       if (body.position !== undefined) update.position = Number(body.position || 0)
       if (body.is_active !== undefined) update.is_active = Boolean(body.is_active)
 
+      if (update.message !== undefined && !update.message) {
+        return json(400, {
+          ok: false,
+          error: 'Message manquant',
+        })
+      }
+
       const { data, error } = await supabase
         .from('reviews')
         .update(update)

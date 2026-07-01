@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles.css'
+
 import { products } from './data/products.js'
 import Layout from './components/Layout.jsx'
+import ReviewsTop from './components/ReviewsTop.jsx'
+
 import Home from './pages/Home.jsx'
 import Shop from './pages/Shop.jsx'
 import ProductPage from './pages/ProductPage.jsx'
@@ -14,10 +17,10 @@ import Contact from './pages/Contact.jsx'
 import Admin from './pages/Admin.jsx'
 import Legal from './pages/Legal.jsx'
 import NotFound from './pages/NotFound.jsx'
-import ReviewsTop from './components/ReviewsTop.jsx'
 
 function getRoute() {
   const { pathname } = window.location
+
   if (pathname === '/') return { name: 'home' }
   if (pathname === '/shop') return { name: 'shop' }
   if (pathname.startsWith('/product/')) return { name: 'product', slug: pathname.split('/').pop() }
@@ -28,6 +31,7 @@ function getRoute() {
   if (pathname === '/contact') return { name: 'contact' }
   if (pathname === '/admin') return { name: 'admin' }
   if (pathname === '/legal') return { name: 'legal' }
+
   return { name: 'not-found' }
 }
 
@@ -37,7 +41,10 @@ function App() {
   useEffect(() => {
     const onRoute = () => setRoute(getRoute())
     window.addEventListener('popstate', onRoute)
-    return () => window.removeEventListener('popstate', onRoute)
+
+    return () => {
+      window.removeEventListener('popstate', onRoute)
+    }
   }, [])
 
   const content = useMemo(() => {
@@ -67,7 +74,7 @@ function App() {
     }
   }, [route])
 
-   return (
+  return (
     <Layout route={route} totalProducts={products.length}>
       {route.name !== 'admin' && <ReviewsTop />}
       {content}
